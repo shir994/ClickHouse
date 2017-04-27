@@ -92,7 +92,7 @@ void TCPHandler::runImpl()
     ...
 ```
 * [dbms/src/Server/ConfigReloader.h](dbms/src/Server/ConfigReloader.h)
-* [dbms/src/Server/ConfigReloader.h](dbms/src/Server/ConfigReloader.cpp)
+* [dbms/src/Server/ConfigReloader.cpp](dbms/src/Server/ConfigReloader.cpp)
 
 ### После чтения
 
