@@ -189,9 +189,12 @@ PATH=$PATH:../../build/dbms/src/Server ./clickhouse-test --no-shard
 
 У меня получилось вот так:
 ```
-Core/ErrorCodes.cpp         |    3
-Interpreters/Context.cpp    |  156 ++++++++++++++++++++++++++++++++++++++++++++
-Interpreters/Context.h      |   35 +++++++++
-Server/HTTPHandler.cpp      |   77 +++++++++++++++++----
-Server/Server.cpp           |    2
+src/Core/ErrorCodes.cpp                                       |    3
+src/Interpreters/Context.cpp                                  |  156 ++++++++++
+src/Interpreters/Context.h                                    |   35 ++
+src/Server/HTTPHandler.cpp                                    |   77 +++-
+src/Server/Server.cpp                                         |    2
+src/Server/config.xml                                         |    6
+tests/queries/0_stateless/00458_sessions_in_http_interface.sh |  109 ++++++
+7 files changed, 373 insertions(+), 15 deletions(-)
 ```
