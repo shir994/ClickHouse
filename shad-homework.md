@@ -109,7 +109,6 @@ void TCPHandler::runImpl()
 После инсталляции системы я ставил git, cmake, boost, poco и остальные зависимости, которые упомянуты в [doc/build.md](doc/build.md):
 ```
 sudo apt-get install git cmake
-sudo apt-get install libboost-all-dev libpoco-dev
 sudo apt-get install libicu-dev libreadline-dev libmysqlclient-dev libssl-dev unixodbc-dev
 ```
 
@@ -119,7 +118,7 @@ git clone https://github.com/sergey-v-galtsev/ClickHouse
 cd ClickHouse
 mkdir build
 cd build
-cmake -DUSE_INTERNAL_POCO_LIBRARY=0 -DUSE_INTERNAL_BOOST_LIBRARY=0 ..
+cmake -DUSE_STATIC_LIBRARIES=OFF ..
 make -j2
 ```
 
