@@ -118,7 +118,7 @@ git clone https://github.com/sergey-v-galtsev/ClickHouse
 cd ClickHouse
 mkdir build
 cd build
-cmake -DUSE_STATIC_LIBRARIES=OFF ..
+cmake -DUSE_STATIC_LIBRARIES=OFF -DCMAKE_BUILD_TYPE=Debug ..
 make -j2
 ```
 
