@@ -44,7 +44,10 @@
 
 #include <Common/ConfigProcessor.h>
 #include <zkutil/ZooKeeper.h>
+#include "Context.h"
+#include "../Columns/ColumnConst.h"
 
+#include <unordered_map>
 
 namespace ProfileEvents
 {
@@ -152,6 +155,9 @@ struct ContextShared
 
     Context::ApplicationType application_type = Context::ApplicationType::SERVER;
 
+    using SessionIdContextMap = std::unordered_map<std::string, std::shared_ptr<Context>>;
+    std::unordered_map<std::string, SessionIdContextMap> sessions_contexts;
+
 
     ~ContextShared()
     {
@@ -200,7 +206,42 @@ struct ContextShared
     }
 };
 
+bool Context::CheckSessionId(const std::string& user, const std::string& session_id)
+{
+    auto lock = getLock();
 
+    if (shared->sessions_contexts.empty())
+    {
+        LOG_INFO(&Logger::get("HTTPHandler"), "Sessions are empty");
+        return false;
+    }
+
+    try
+    {
+        shared->sessions_contexts.at(user).at(session_id);
+    } catch (const std::out_of_range& oor)
+    {
+        LOG_INFO(&Logger::get("HTTPHandler"), "No such session_id for user");
+        return false;
+    }
+
+    LOG_INFO(&Logger::get("HTTPHandler"), "Session exists");
+    return true;
+}
+
+void Context::CreateUserSession(const std::string& user, const std::string& session_id)
+{
+    auto lock = getLock();
+    std::shared_ptr<Context> new_context = std::make_shared<Context>();
+    *new_context = *this;
+    new_context->setSessionContext(*new_context);
+    shared->sessions_contexts[user].insert({session_id, new_context});
+}
+
+Context Context::GetContext(const std::string &user, const std::string &session_id)
+{
+    return *(shared->sessions_contexts.at(user).at(session_id));
+}
 Context::Context()
     : shared(new ContextShared),
     quota(new QuotaForIntervals)
@@ -566,6 +607,7 @@ StoragePtr Context::getTableImpl(const String & database_name, const String & ta
 
     if (database_name.empty())
     {
+        LOG_INFO(&Logger::get("HTTPHandler"), "From getTableImpl, dabase_name.empty() = True");
         StoragePtr res = tryGetExternalTable(table_name);
         if (res)
             return res;

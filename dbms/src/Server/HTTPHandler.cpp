@@ -29,6 +29,7 @@
 #include <Interpreters/Quota.h>
 
 #include "HTTPHandler.h"
+#include "../Interpreters/Context.h"
 
 namespace DB
 {
@@ -73,6 +74,8 @@ namespace ErrorCodes
     extern const int UNKNOWN_USER;
     extern const int WRONG_PASSWORD;
     extern const int REQUIRED_PASSWORD;
+
+    extern const int NO_SESSION_ID;
 }
 
 static Poco::Net::HTTPResponse::HTTPStatus exceptionCodeToHTTPStatus(int exception_code)
@@ -193,8 +196,32 @@ void HTTPHandler::processQuery(
     std::string quota_key = request.get("X-ClickHouse-Quota", params.get("quota_key", ""));
     std::string query_id = params.get("query_id", "");
 
+    std::string session_id = request.get("session_id", params.get("session_id", ""));
+    std::string session_check = request.get("session_check", params.get("session_check", ""));
+
+    LOG_INFO(log, "session_id: " << session_id);
+
+
     Context context = *server.global_context;
     context.setGlobalContext(*server.global_context);
+
+    if (session_id != "")
+    {
+        if (session_check == "1")
+        {
+            if (!server.global_context->CheckSessionId(user, session_id))
+                throw Exception("No such seesion_id for user: " + user, ErrorCodes::NO_SESSION_ID);
+        }
+
+        if (!server.global_context->CheckSessionId(user, session_id))
+        {
+            LOG_INFO(log, "Create session_id: " << session_id << " for user: " << user);
+            server.global_context->CreateUserSession(user, session_id);
+        }
+        LOG_INFO(log, "Session must be already created");
+        context = server.global_context->GetContext(user, session_id);
+    }
+
 
     context.setUser(user, password, request.clientAddress(), quota_key);
     context.setCurrentQueryId(query_id);
@@ -370,9 +397,8 @@ void HTTPHandler::processQuery(
     auto readonly_before_query = limits.readonly;
 
     NameSet reserved_param_names{"query", "compress", "decompress", "user", "password", "quota_key", "query_id", "stacktrace",
-        "buffer_size", "wait_end_of_query"
+        "buffer_size", "wait_end_of_query", "session_id", "session_check"
     };
-
     for (auto it = params.begin(); it != params.end(); ++it)
     {
         if (it->first == "database")
@@ -399,7 +425,6 @@ void HTTPHandler::processQuery(
             context.setSetting(it->first, it->second);
         }
     }
-
     const Settings & settings = context.getSettingsRef();
 
     /// HTTP response compression is turned on only if the client signalled that they support it

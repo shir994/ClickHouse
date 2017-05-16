@@ -377,6 +377,7 @@ namespace ErrorCodes
     extern const int POCO_EXCEPTION = 1000;
     extern const int STD_EXCEPTION = 1001;
     extern const int UNKNOWN_EXCEPTION = 1002;
+    extern const int NO_SESSION_ID = 1003;
 }
 
 }

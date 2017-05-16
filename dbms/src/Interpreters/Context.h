@@ -102,6 +102,11 @@ private:
     using Databases = std::map<String, std::shared_ptr<IDatabase>>;
 
 public:
+    bool CheckSessionId(const std::string& user, const std::string& session_id);
+    void CreateUserSession(const std::string& user, const std::string& session_id);
+    Context GetContext(const std::string& user, const std::string& session_id);
+
+
     Context();
     ~Context();
 
