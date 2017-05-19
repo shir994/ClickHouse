@@ -378,6 +378,7 @@ namespace ErrorCodes
     extern const int STD_EXCEPTION = 1001;
     extern const int UNKNOWN_EXCEPTION = 1002;
     extern const int NO_SESSION_ID = 1003;
+    extern const int INCORRECT_TIMEOUT_VALUE = 1004;
 }
 
 }

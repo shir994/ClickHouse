@@ -334,6 +334,9 @@ int Server::main(const std::vector<std::string> & args)
         [&](ConfigurationPtr config) { global_context->setClustersConfig(config); },
         /* already_loaded = */ true);
 
+    /// Sessions cleaner thread.
+    auto sessions_cleaner = std::make_unique<TimedOutSessionCleaner>(global_context.get());
+
     /// Initialize users config reloader.
     std::string users_config_path = config().getString("users_config", config_path);
     /// If path to users' config isn't absolute, try guess its root (current) dir.

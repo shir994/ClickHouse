@@ -198,6 +198,8 @@ void HTTPHandler::processQuery(
 
     std::string session_id = request.get("session_id", params.get("session_id", ""));
     std::string session_check = request.get("session_check", params.get("session_check", ""));
+    std::string session_timeout = request.get("session_timeout", params.get("session_timeout", "60"));
+
 
     LOG_INFO(log, "session_id: " << session_id);
 
@@ -215,10 +217,11 @@ void HTTPHandler::processQuery(
 
         if (!server.global_context->CheckSessionId(user, session_id))
         {
-            LOG_INFO(log, "Create session_id: " << session_id << " for user: " << user);
+            LOG_INFO(log, "Create session_id: " << session_id << " for user: " << user << " with timeout " << session_timeout);
             server.global_context->CreateUserSession(user, session_id);
         }
         LOG_INFO(log, "Session must be already created");
+        server.global_context->SetSessionTimeout(user, session_id, session_timeout);
         context = server.global_context->GetContext(user, session_id);
     }
 
@@ -397,7 +400,7 @@ void HTTPHandler::processQuery(
     auto readonly_before_query = limits.readonly;
 
     NameSet reserved_param_names{"query", "compress", "decompress", "user", "password", "quota_key", "query_id", "stacktrace",
-        "buffer_size", "wait_end_of_query", "session_id", "session_check"
+        "buffer_size", "wait_end_of_query", "session_id", "session_check", "session_timeout"
     };
     for (auto it = params.begin(); it != params.end(); ++it)
     {

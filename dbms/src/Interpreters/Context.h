@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <thread>
 
 #include <Core/Types.h>
 #include <Core/NamesAndTypes.h>
@@ -62,6 +63,8 @@ using BlockInputStreamPtr = std::shared_ptr<IBlockInputStream>;
 using BlockOutputStreamPtr = std::shared_ptr<IBlockOutputStream>;
 class Block;
 
+struct HTTPSession;
+
 
 /// (имя базы данных, имя таблицы)
 using DatabaseAndTableName = std::pair<String, String>;
@@ -104,7 +107,11 @@ private:
 public:
     bool CheckSessionId(const std::string& user, const std::string& session_id);
     void CreateUserSession(const std::string& user, const std::string& session_id);
+    void SetSessionTimeout(const std::string& user, const std::string& session_id, const std::string& session_timeout);
     Context GetContext(const std::string& user, const std::string& session_id);
+
+    //using SessionIdContextMap = std::unordered_map<std::string, std::shared_ptr<HTTPSession>>;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<HTTPSession>>>* GetSessionsMap();
 
 
     Context();
@@ -349,4 +356,19 @@ private:
     std::mutex & mutex;
 };
 
+class TimedOutSessionCleaner
+{
+public:
+    TimedOutSessionCleaner(Context* global_context_);
+    ~TimedOutSessionCleaner();
+private:
+    void run();
+    void CleanSessions();
+    std::atomic<bool> quit{false};
+    std::thread thread;
+    Context* global_context;
+};
+
 }
+
+

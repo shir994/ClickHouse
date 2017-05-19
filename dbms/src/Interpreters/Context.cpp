@@ -77,6 +77,7 @@ namespace ErrorCodes
     extern const int NO_ELEMENTS_IN_CONFIG;
     extern const int DDL_GUARD_IS_ACTIVE;
     extern const int TABLE_SIZE_EXCEEDS_MAX_DROP_SIZE_LIMIT;
+    extern const int INCORRECT_TIMEOUT_VALUE;
 }
 
 class TableFunctionFactory;
@@ -85,6 +86,36 @@ class TableFunctionFactory;
 /** Set of known objects (environment), that could be used in query.
   * Shared (global) part. Order of members (especially, order of destruction) is very important.
   */
+
+struct HTTPSession
+{
+    void SetSessionTimeout(const std::string& session_timeout);
+    std::shared_ptr<Context> context;
+    std::mutex mutex;
+    Poco::Timestamp previous_query_time;
+    Poco::Timestamp::TimeDiff timeout;
+    const Poco::Timestamp::TimeDiff MAX_SESSION_TIMEOUT = 3600;
+};
+
+void HTTPSession::SetSessionTimeout(const std::string &session_timeout)
+{
+    try
+    {
+        timeout = std::stoi(session_timeout);
+    } catch (const std::invalid_argument)
+    {
+        throw Exception("Timeout must be int number", ErrorCodes::INCORRECT_TIMEOUT_VALUE);
+    } catch (const std::out_of_range)
+    {
+        throw Exception("Too big number to convert to int", ErrorCodes::INCORRECT_TIMEOUT_VALUE);
+    }
+    if (timeout > MAX_SESSION_TIMEOUT) {
+        timeout = MAX_SESSION_TIMEOUT * 1000000;
+        throw Exception("Timeout can not exceed " + std::to_string(MAX_SESSION_TIMEOUT), ErrorCodes::INCORRECT_TIMEOUT_VALUE);
+    }
+    timeout *= 1000000;
+}
+
 struct ContextShared
 {
     Logger * log = &Logger::get("Context");
@@ -155,7 +186,7 @@ struct ContextShared
 
     Context::ApplicationType application_type = Context::ApplicationType::SERVER;
 
-    using SessionIdContextMap = std::unordered_map<std::string, std::shared_ptr<Context>>;
+    using SessionIdContextMap = std::unordered_map<std::string, std::shared_ptr<HTTPSession>>;
     std::unordered_map<std::string, SessionIdContextMap> sessions_contexts;
 
 
@@ -206,6 +237,49 @@ struct ContextShared
     }
 };
 
+
+
+
+TimedOutSessionCleaner::TimedOutSessionCleaner(Context* global_context_) : global_context(global_context_)
+{
+    thread = std::thread(&TimedOutSessionCleaner::run, this);
+}
+
+TimedOutSessionCleaner::~TimedOutSessionCleaner()
+{
+    quit = true;
+    thread.join();
+}
+
+void TimedOutSessionCleaner::run()
+{
+    while(true)
+    {
+        CleanSessions();
+        if (quit)
+            return;
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+    }
+}
+
+void TimedOutSessionCleaner::CleanSessions()
+{
+    std::vector<std::pair<std::string, std::string>> sessions_to_delete;
+
+    auto session_map = global_context->GetSessionsMap();
+    for (auto user = session_map->begin(); user != session_map->end(); ++user) {
+        for (auto session = user->second.begin(); session != user->second.end(); ++ session) {
+            if (session->second->previous_query_time.elapsed() > session->second->timeout) {
+                sessions_to_delete.emplace_back(user->first, session->first);
+            }
+        }
+    }
+
+    for (const auto& ids : sessions_to_delete) {
+        session_map->at(ids.first).erase(ids.second);
+    }
+}
+
 bool Context::CheckSessionId(const std::string& user, const std::string& session_id)
 {
     auto lock = getLock();
@@ -224,24 +298,56 @@ bool Context::CheckSessionId(const std::string& user, const std::string& session
         LOG_INFO(&Logger::get("HTTPHandler"), "No such session_id for user");
         return false;
     }
-
+/*
+    auto session = shared->sessions_contexts.at(user).at(session_id);
+    if (session->previous_query_time.elapsed() > session->timeout) {
+        //TODO write deleter here(do we need to do it now??)
+        LOG_INFO(&Logger::get("HTTPHandler"), "TIMEOUT pass->deliting session");
+        return false;
+    }
+*/
+    auto session = shared->sessions_contexts.at(user).at(session_id);
     LOG_INFO(&Logger::get("HTTPHandler"), "Session exists");
+    session->previous_query_time.update();
     return true;
 }
+
+void Context::SetSessionTimeout(const std::string& user, const std::string& session_id, const std::string& session_timeout)
+{
+    auto lock = getLock();
+
+    shared->sessions_contexts.at(user).at(session_id)->SetSessionTimeout(session_timeout);
+}
+
 
 void Context::CreateUserSession(const std::string& user, const std::string& session_id)
 {
     auto lock = getLock();
+
+    auto new_session = std::make_shared<HTTPSession>();
+
     std::shared_ptr<Context> new_context = std::make_shared<Context>();
     *new_context = *this;
     new_context->setSessionContext(*new_context);
-    shared->sessions_contexts[user].insert({session_id, new_context});
+    new_session->context = new_context;
+
+
+    shared->sessions_contexts[user].insert({session_id, new_session});
+
+    new_session->previous_query_time.update();
 }
 
 Context Context::GetContext(const std::string &user, const std::string &session_id)
 {
-    return *(shared->sessions_contexts.at(user).at(session_id));
+    return *(shared->sessions_contexts.at(user).at(session_id)->context);
 }
+
+std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<HTTPSession>>>* Context::GetSessionsMap()
+{
+    return &shared->sessions_contexts;
+}
+
+
 Context::Context()
     : shared(new ContextShared),
     quota(new QuotaForIntervals)
