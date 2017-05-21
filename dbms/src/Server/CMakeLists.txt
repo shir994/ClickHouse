@@ -7,6 +7,7 @@ add_library(clickhouse-server
     ConfigReloader.cpp
     StatusFile.cpp
     ReplicasStatusHandler.cpp
+    HTTPSessionsCleaner.cpp
 )
 target_link_libraries(clickhouse-server daemon storages_system)
 

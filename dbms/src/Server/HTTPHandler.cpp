@@ -198,7 +198,7 @@ void HTTPHandler::processQuery(
 
     std::string session_id = request.get("session_id", params.get("session_id", ""));
     std::string session_check = request.get("session_check", params.get("session_check", ""));
-    std::string session_timeout = request.get("session_timeout", params.get("session_timeout", "60"));
+    std::string session_timeout = request.get("session_timeout", params.get("session_timeout", ""));
 
 
     LOG_INFO(log, "session_id: " << session_id);
@@ -207,22 +207,34 @@ void HTTPHandler::processQuery(
     Context context = *server.global_context;
     context.setGlobalContext(*server.global_context);
 
+    std::shared_ptr<Context> sesssion_blocking_ptr;
+
     if (session_id != "")
     {
         if (session_check == "1")
         {
             if (!server.global_context->CheckSessionId(user, session_id))
-                throw Exception("No such seesion_id for user: " + user, ErrorCodes::NO_SESSION_ID);
+                throw Exception("No such session_id for user: " + user, ErrorCodes::NO_SESSION_ID);
         }
 
         if (!server.global_context->CheckSessionId(user, session_id))
         {
             LOG_INFO(log, "Create session_id: " << session_id << " for user: " << user << " with timeout " << session_timeout);
-            server.global_context->CreateUserSession(user, session_id);
+            sesssion_blocking_ptr = server.global_context->CreateUserSession(user, session_id);
         }
-        LOG_INFO(log, "Session must be already created");
-        server.global_context->SetSessionTimeout(user, session_id, session_timeout);
-        context = server.global_context->GetContext(user, session_id);
+        else
+        {
+            LOG_INFO(log, "Session exist, capturing context");
+            sesssion_blocking_ptr = server.global_context->GetContext(user, session_id);
+        }
+
+        context = *sesssion_blocking_ptr;
+
+        if (session_timeout != "")
+            sesssion_blocking_ptr->SetSessionTimeout(session_timeout);
+
+        sesssion_blocking_ptr->UpdateDeadline();
+
     }
 
 

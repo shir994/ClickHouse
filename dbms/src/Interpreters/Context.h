@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <thread>
+#include <chrono>
 
 #include <Core/Types.h>
 #include <Core/NamesAndTypes.h>
@@ -63,8 +64,6 @@ using BlockInputStreamPtr = std::shared_ptr<IBlockInputStream>;
 using BlockOutputStreamPtr = std::shared_ptr<IBlockOutputStream>;
 class Block;
 
-struct HTTPSession;
-
 
 /// (имя базы данных, имя таблицы)
 using DatabaseAndTableName = std::pair<String, String>;
@@ -104,14 +103,22 @@ private:
     using DatabasePtr = std::shared_ptr<IDatabase>;
     using Databases = std::map<String, std::shared_ptr<IDatabase>>;
 
+    std::chrono::steady_clock clock;
+    std::chrono::steady_clock::time_point deadline;
+    //TODO set default value in xml
+    std::chrono::seconds timeout{60};
+    std::chrono::seconds MAX_SESSION_TIMEOUT{3600};
+
 public:
     bool CheckSessionId(const std::string& user, const std::string& session_id);
-    void CreateUserSession(const std::string& user, const std::string& session_id);
-    void SetSessionTimeout(const std::string& user, const std::string& session_id, const std::string& session_timeout);
-    Context GetContext(const std::string& user, const std::string& session_id);
+    std::shared_ptr<Context> CreateUserSession(const std::string& user, const std::string& session_id);
+    std::shared_ptr<Context> GetContext(const std::string& user, const std::string& session_id);
+    void SetSessionTimeout(const std::string &session_timeout);
+    void UpdateDeadline();
+    bool SessionExpired();
 
     //using SessionIdContextMap = std::unordered_map<std::string, std::shared_ptr<HTTPSession>>;
-    std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<HTTPSession>>>* GetSessionsMap();
+    std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<Context>>>* GetSessionsMap();
 
 
     Context();
@@ -354,19 +361,6 @@ private:
     Map & map;
     Map::iterator it;
     std::mutex & mutex;
-};
-
-class TimedOutSessionCleaner
-{
-public:
-    TimedOutSessionCleaner(Context* global_context_);
-    ~TimedOutSessionCleaner();
-private:
-    void run();
-    void CleanSessions();
-    std::atomic<bool> quit{false};
-    std::thread thread;
-    Context* global_context;
 };
 
 }
